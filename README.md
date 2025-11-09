@@ -39,6 +39,28 @@ Output: `data/{state}_streets.parquet` with columns:
 - `highway_type`: Most common highway type
 - Plus other common OSM tags
 
+### `analyze_streets.py`
+Analyze street name patterns and generate visualizations.
+
+**Usage:**
+```bash
+python analyze_streets.py [state_name]
+python analyze_streets.py delaware
+```
+
+Features:
+- Plots top 5 most common street names (seaborn bar chart)
+- Identifies streets containing state names (case insensitive)
+- Shows distribution of which state names appear in streets
+- Creates interactive Folium maps with state-colored markers
+- Outputs to `output/` directory
+
+### Supporting Files
+
+- `states.py` - Enum of all 50 US states
+- `state_colors.py` - Color scheme for states (50 maximally distinct colors via distinctipy)
+- `generate_state_colors.py` - Script to regenerate state colors if needed
+
 ## Data
 
 The `data/` directory contains:
