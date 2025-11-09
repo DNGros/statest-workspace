@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use geo::{Distance, Haversine, Point};
+use indicatif::{ProgressBar, ProgressStyle};
 use osmpbf::{Element, ElementReader};
 use polars::prelude::*;
 use rayon::prelude::*;
@@ -217,6 +218,7 @@ fn find_connected_components(segments: &[StreetSegment]) -> Vec<Vec<usize>> {
 }
 
 /// Group segments with same name using spatial proximity (for disconnected segments)
+/// Matches Python algorithm: checks minimum distance between ANY nodes in components
 fn group_nearby_components(
     segments: &[StreetSegment],
     components: Vec<Vec<usize>>,
@@ -226,66 +228,74 @@ fn group_nearby_components(
         return components;
     }
     
-    // Build R-tree with component centroids
-    let component_points: Vec<_> = components
-        .iter()
-        .enumerate()
-        .map(|(comp_idx, indices)| {
-            // Calculate centroid of component
-            let mut sum_lat = 0.0;
-            let mut sum_lon = 0.0;
-            let mut count = 0;
+    // Build connectivity graph based on distance threshold
+    // This matches the Python algorithm exactly
+    let n = components.len();
+    let mut connections: Vec<Vec<usize>> = vec![Vec::new(); n];
+    
+    // Progress bar for distance checks
+    let pb = ProgressBar::new((n * (n - 1) / 2) as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("  [{bar:40}] {pos}/{len} pairs ({eta})")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+    
+    // Check all pairs of components (quadratic, like Python)
+    for i in 0..n {
+        for j in (i + 1)..n {
+            pb.inc(1);
+            // Check minimum distance between any nodes in the two components
+            let mut min_dist = f64::INFINITY;
             
-            for &seg_idx in indices {
-                for &(lat, lon) in &segments[seg_idx].coords {
-                    sum_lat += lat;
-                    sum_lon += lon;
-                    count += 1;
+            for &seg_i in &components[i] {
+                for &(lat1, lon1) in &segments[seg_i].coords {
+                    for &seg_j in &components[j] {
+                        for &(lat2, lon2) in &segments[seg_j].coords {
+                            // Simple approximation: 1 degree ≈ 111 km
+                            let dlat = lat2 - lat1;
+                            let dlon = lon2 - lon1;
+                            let dist = (dlat * dlat + dlon * dlon).sqrt() * 111.0;
+                            min_dist = min_dist.min(dist);
+                        }
+                    }
                 }
             }
             
-            let centroid = (sum_lat / count as f64, sum_lon / count as f64);
-            (comp_idx, centroid)
-        })
-        .collect();
+            if min_dist < distance_threshold_km {
+                connections[i].push(j);
+                connections[j].push(i);
+            }
+        }
+    }
     
-    // Build R-tree
-    let rtree_points: Vec<[f64; 2]> = component_points
-        .iter()
-        .map(|(_, (lat, lon))| [*lat, *lon])
-        .collect();
-    let rtree = RTree::bulk_load(rtree_points);
+    pb.finish_and_clear();
     
-    // Find nearby components and merge
-    let mut merged = vec![false; components.len()];
+    // Find connected components using BFS (same as Python)
+    let mut visited = vec![false; n];
     let mut final_components = Vec::new();
     
-    for (comp_idx, (lat, lon)) in &component_points {
-        if merged[*comp_idx] {
-            continue;
-        }
-        
-        let point = Point::new(*lon, *lat);
-        let mut merged_component = components[*comp_idx].clone();
-        merged[*comp_idx] = true;
-        
-        // Find nearby components
-        for (other_idx, (other_lat, other_lon)) in &component_points {
-            if *other_idx == *comp_idx || merged[*other_idx] {
-                continue;
+    for start in 0..n {
+        if !visited[start] {
+            let mut merged_component = Vec::new();
+            let mut queue = vec![start];
+            visited[start] = true;
+            
+            while let Some(current) = queue.pop() {
+                // Add all segments from this component
+                merged_component.extend(&components[current]);
+                
+                for &neighbor in &connections[current] {
+                    if !visited[neighbor] {
+                        visited[neighbor] = true;
+                        queue.push(neighbor);
+                    }
+                }
             }
             
-            let other_point = Point::new(*other_lon, *other_lat);
-            let distance_m = Haversine.distance(point, other_point);
-            let distance_km = distance_m / 1000.0;
-            
-            if distance_km < distance_threshold_km {
-                merged_component.extend(&components[*other_idx]);
-                merged[*other_idx] = true;
-            }
+            final_components.push(merged_component);
         }
-        
-        final_components.push(merged_component);
     }
     
     final_components
@@ -307,6 +317,15 @@ fn group_segments_into_streets(
     
     println!("  Found {} unique street names", by_name_state.len());
     
+    // Progress bar for processing street names
+    let pb = ProgressBar::new(by_name_state.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("  Processing: [{bar:40}] {pos}/{len} street names ({eta})")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+    
     // Process each name group in parallel
     let streets: Vec<Street> = by_name_state
         .into_par_iter()
@@ -322,6 +341,8 @@ fn group_segments_into_streets(
             } else {
                 components
             };
+            
+            pb.inc(1);
             
             // Create one street per component
             final_components
@@ -381,6 +402,8 @@ fn group_segments_into_streets(
                 .collect::<Vec<_>>()
         })
         .collect();
+    
+    pb.finish_and_clear();
     
     println!("  Created {} unique streets", streets.len());
     streets
@@ -505,7 +528,7 @@ fn main() -> Result<()> {
     let distance_threshold_km = if args.len() > 3 {
         args[3].parse().context("Invalid distance threshold")?
     } else {
-        0.1 // Default 100m
+        0.2 // Default 200m
     };
     
     if !pbf_path.exists() {

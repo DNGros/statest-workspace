@@ -17,6 +17,7 @@ polars = { version = "0.41", features = ["lazy", "parquet", "dtype-struct"] }
 # Utilities
 anyhow = "1.0"
 rayon = "1.10"
+indicatif = "0.17"
 
 [profile.release]
 opt-level = 3

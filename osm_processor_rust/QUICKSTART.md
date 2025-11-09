@@ -24,8 +24,8 @@ This will take 5-10 minutes to compile but creates a highly optimized binary.
 # Large state (California) - this is where Rust shines!
 ./target/release/osm_processor_rust california ../data/osm/california-latest.osm.pbf
 
-# Custom distance threshold (default is 0.1 km)
-./target/release/osm_processor_rust texas ../data/osm/texas-latest.osm.pbf 0.2
+# Custom distance threshold (default is 0.2 km)
+./target/release/osm_processor_rust texas ../data/osm/texas-latest.osm.pbf 0.5
 ```
 
 ## Performance Comparison
