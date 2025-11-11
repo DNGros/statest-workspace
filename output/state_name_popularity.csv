@@ -1,49 +1,49 @@
-state,total_mentions
-washington,10837
-virginia,4002
-ohio,2035
-delaware,1909
-michigan,1807
-texas,1709
-georgia,1647
-colorado,1591
-pennsylvania,1572
-california,1540
-florida,1490
-indiana,1407
-oregon,1404
-illinois,1390
-kentucky,1388
-nevada,1385
-iowa,1367
-kansas,1238
-vermont,1194
-maryland,1119
-montana,1105
-missouri,1045
+state_name,street_count
+washington,10865
+virginia,4025
+ohio,2075
+iowa,2029
+georgia,1912
+delaware,1911
+kansas,1817
+michigan,1809
+texas,1715
+colorado,1604
+pennsylvania,1573
+california,1543
+indiana,1532
+florida,1508
+oregon,1408
+illinois,1391
+kentucky,1389
+nevada,1386
+vermont,1297
+montana,1135
+maryland,1120
+missouri,1047
 alabama,1006
-arizona,958
+arizona,960
 tennessee,928
-idaho,869
+idaho,878
 wisconsin,806
-new york,781
+new york,786
+utah,781
 wyoming,757
-utah,755
+maine,748
 minnesota,734
 louisiana,712
 nebraska,697
-oklahoma,663
-mississippi,642
+oklahoma,664
+mississippi,644
 arkansas,579
-connecticut,436
+connecticut,437
+alaska,414
 massachusetts,382
-maine,378
-alaska,378
 rhode island,320
 new jersey,310
-west virginia,282
+west virginia,292
+hawaii,265
 new hampshire,230
-hawaii,224
 north carolina,170
 new mexico,126
 south carolina,122

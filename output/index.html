@@ -1,0 +1,281 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Street Name Analysis - All 50 States</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 40px;
+            border-bottom: 2px solid #95a5a6;
+            padding-bottom: 5px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-box h3 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }
+        .stat-box p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .file-card {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+        }
+        .file-card h3 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+        .file-card p {
+            margin: 0 0 10px 0;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        .file-card a {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 8px 16px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+        .file-card a:hover {
+            background: #2980b9;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .image-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .image-card h3 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+    <h1>🗺️ Street Name Analysis Across All US States</h1>
+    
+    <div class="section">
+        <p style="font-size: 1.1em; line-height: 1.6;">
+            A comprehensive analysis of street names across all 50 US states (7+ million streets), 
+            examining which state names appear most frequently in street names and how states 
+            balance naming streets after themselves versus other states.
+        </p>
+    </div>
+
+    <div class="stats">
+        <div class="stat-box">
+            <h3>7,154,657</h3>
+            <p>Total Streets Analyzed</p>
+        </div>
+        <div class="stat-box">
+            <h3>50</h3>
+            <p>States with Data</p>
+        </div>
+        <div class="stat-box">
+            <h3>60,142</h3>
+            <p>State-Named Streets</p>
+        </div>
+        <div class="stat-box">
+            <h3>0.84%</h3>
+            <p>% State-Named</p>
+        </div>
+    </div>
+
+    <h2>📊 Key Findings</h2>
+    <div class="section">
+        <div class="highlight">
+            <strong>Most Popular State Name:</strong> "Washington" appears in 10,865 street names nationwide - 
+            more than 2.5x the second most popular state name!
+        </div>
+        
+        <div class="highlight">
+            <strong>Most "Egotistical" State:</strong> Vermont has an ego score of 3.53, naming streets 
+            after itself 3.5x more often than after other states.
+        </div>
+        
+        <div class="highlight">
+            <strong>Most "Humble" State:</strong> Massachusetts has an ego score of 0.087, naming streets 
+            after other states 11.5x more often than after itself.
+        </div>
+    </div>
+
+    <h2>🗺️ Interactive Maps</h2>
+    <div class="file-grid">
+        <div class="file-card">
+            <h3>National State Streets Map</h3>
+            <p>Interactive map showing 50,000 streets with state names across the entire country</p>
+            <a href="national_state_streets_map.html" target="_blank">Open Map →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>State Ego Score Map</h3>
+            <p>Choropleth showing which states are most "egotistical" vs "humble"</p>
+            <a href="state_colors_map_ego_score.html" target="_blank">Open Map →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>State Name Popularity Map</h3>
+            <p>Bubble map showing how popular each state's name is nationwide</p>
+            <a href="state_name_popularity_map.html" target="_blank">Open Map →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>Self-Naming Percentage Map</h3>
+            <p>Map showing % of streets named after the state itself</p>
+            <a href="state_colors_map_self_pct.html" target="_blank">Open Map →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>Other-State-Naming Map</h3>
+            <p>Map showing % of streets named after other states</p>
+            <a href="state_colors_map_other_pct.html" target="_blank">Open Map →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>California State Streets</h3>
+            <p>Streets with state names in California</p>
+            <a href="california_state_streets_comparison.html" target="_blank">Open Map →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>Texas State Streets</h3>
+            <p>Streets with state names in Texas</p>
+            <a href="texas_state_streets_comparison.html" target="_blank">Open Map →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>Delaware State Streets</h3>
+            <p>Streets with state names in Delaware</p>
+            <a href="delaware_state_streets_comparison.html" target="_blank">Open Map →</a>
+        </div>
+    </div>
+
+    <h2>📈 Visualizations</h2>
+    
+    <div class="image-grid">
+        <div class="image-card">
+            <h3>State Name Popularity</h3>
+            <img src="state_name_popularity.png" alt="State Name Popularity">
+        </div>
+        
+        <div class="image-card">
+            <h3>Most Egotistical States</h3>
+            <img src="top_egotistical_states.png" alt="Most Egotistical States">
+        </div>
+        
+        <div class="image-card">
+            <h3>Most Humble States</h3>
+            <img src="top_humble_states.png" alt="Most Humble States">
+        </div>
+        
+        <div class="image-card">
+            <h3>Ego vs Humility Scatter Plot</h3>
+            <img src="ego_vs_humility_scatter.png" alt="Ego vs Humility">
+        </div>
+    </div>
+
+    <h2>📁 Data Files</h2>
+    <div class="file-grid">
+        <div class="file-card">
+            <h3>State Name Popularity Data</h3>
+            <p>CSV file with street counts for each state name</p>
+            <a href="state_name_popularity.csv" download>Download CSV →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>State Ego/Humility Data</h3>
+            <p>CSV file with ego scores and naming statistics</p>
+            <a href="state_ego_humility.csv" download>Download CSV →</a>
+        </div>
+        
+        <div class="file-card">
+            <h3>Analysis Summary Report</h3>
+            <p>Text summary of all findings</p>
+            <a href="analysis_summary.txt" download>Download TXT →</a>
+        </div>
+    </div>
+
+    <h2>📖 Methodology</h2>
+    <div class="section">
+        <p><strong>Data Source:</strong> OpenStreetMap data for all 50 US states</p>
+        <p><strong>Total Streets:</strong> 7,154,657 street segments analyzed</p>
+        <p><strong>Analysis:</strong> Pattern matching for all 50 US state names in street names</p>
+        <p><strong>Ego Score:</strong> Ratio of streets named after the state itself vs. streets named after other states</p>
+        <ul>
+            <li>High ego score (>0.5): State names many streets after itself</li>
+            <li>Low ego score (<0.15): State names many streets after other states</li>
+        </ul>
+    </div>
+
+    <footer style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #ecf0f1; text-align: center; color: #7f8c8d;">
+        <p>Generated from OpenStreetMap data | Analysis by Street Name Analyzer</p>
+    </footer>
+</body>
+</html>

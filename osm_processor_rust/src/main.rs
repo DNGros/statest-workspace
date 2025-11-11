@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
-use geo::{Distance, Haversine, Point};
+use geo::{HaversineDistance, Point};
 use indicatif::{ProgressBar, ProgressStyle};
 use osmpbf::{Element, ElementReader};
 use polars::prelude::*;
 use rayon::prelude::*;
-use rstar::RTree;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -18,12 +17,20 @@ struct StreetSegment {
     coords: Vec<(f64, f64)>, // (lat, lon)
     highway_type: String,
     tags: HashMap<String, String>,
+    length_km: f64,
 }
 
 impl StreetSegment {
     /// Get representative coordinates (first point)
     fn rep_coords(&self) -> (f64, f64) {
         self.coords[0]
+    }
+    
+    /// Get first and last coordinates for distance checking
+    fn endpoints(&self) -> ((f64, f64), (f64, f64)) {
+        let first = self.coords[0];
+        let last = self.coords[self.coords.len() - 1];
+        (first, last)
     }
 }
 
@@ -37,6 +44,7 @@ struct Street {
     num_segments: usize,
     highway_type: String,
     tags: HashMap<String, String>,
+    length_km: f64,
 }
 
 /// First pass: collect which nodes are used by named highways
@@ -141,6 +149,14 @@ fn extract_street_segments(
                     .collect();
                 
                 if !coords.is_empty() {
+                    // Calculate segment length using Haversine distance
+                    let mut length_km = 0.0;
+                    for i in 0..(coords.len() - 1) {
+                        let p1 = Point::new(coords[i].1, coords[i].0); // (lon, lat)
+                        let p2 = Point::new(coords[i + 1].1, coords[i + 1].0); // (lon, lat)
+                        length_km += p1.haversine_distance(&p2) / 1000.0; // Convert meters to km
+                    }
+                    
                     segments.push(StreetSegment {
                         street_name: name.clone(),
                         state: state_name.to_string(),
@@ -149,6 +165,7 @@ fn extract_street_segments(
                         coords,
                         highway_type: highway_type.clone(),
                         tags,
+                        length_km,
                     });
                 }
             }
@@ -218,7 +235,7 @@ fn find_connected_components(segments: &[StreetSegment]) -> Vec<Vec<usize>> {
 }
 
 /// Group segments with same name using spatial proximity (for disconnected segments)
-/// Matches Python algorithm: checks minimum distance between ANY nodes in components
+/// Optimized: checks minimum distance between endpoints (first/last nodes) of segments
 fn group_nearby_components(
     segments: &[StreetSegment],
     components: Vec<Vec<usize>>,
@@ -243,23 +260,32 @@ fn group_nearby_components(
     );
     
     // Check all pairs of components (quadratic, like Python)
+    // Optimized to only check first and last nodes of each segment
     for i in 0..n {
         for j in (i + 1)..n {
             pb.inc(1);
-            // Check minimum distance between any nodes in the two components
+            // Check minimum distance between endpoints (first/last nodes) of segments
             let mut min_dist = f64::INFINITY;
             
             for &seg_i in &components[i] {
-                for &(lat1, lon1) in &segments[seg_i].coords {
-                    for &seg_j in &components[j] {
-                        for &(lat2, lon2) in &segments[seg_j].coords {
-                            // Simple approximation: 1 degree ≈ 111 km
-                            let dlat = lat2 - lat1;
-                            let dlon = lon2 - lon1;
-                            let dist = (dlat * dlat + dlon * dlon).sqrt() * 111.0;
-                            min_dist = min_dist.min(dist);
-                        }
-                    }
+                let (start_i, end_i) = segments[seg_i].endpoints();
+                let p1_start = Point::new(start_i.1, start_i.0); // (lon, lat)
+                let p1_end = Point::new(end_i.1, end_i.0); // (lon, lat)
+                
+                for &seg_j in &components[j] {
+                    let (start_j, end_j) = segments[seg_j].endpoints();
+                    let p2_start = Point::new(start_j.1, start_j.0); // (lon, lat)
+                    let p2_end = Point::new(end_j.1, end_j.0); // (lon, lat)
+                    
+                    // Check all endpoint combinations
+                    let dists = [
+                        p1_start.haversine_distance(&p2_start) / 1000.0, // Convert meters to km
+                        p1_start.haversine_distance(&p2_end) / 1000.0,
+                        p1_end.haversine_distance(&p2_start) / 1000.0,
+                        p1_end.haversine_distance(&p2_end) / 1000.0,
+                    ];
+                    
+                    min_dist = min_dist.min(dists[0].min(dists[1].min(dists[2].min(dists[3]))));
                 }
             }
             
@@ -356,6 +382,9 @@ fn group_segments_into_streets(
                     // Use first segment's coordinates
                     let (lat, lon) = segs[0].rep_coords();
                     
+                    // Sum all segment lengths
+                    let total_length_km: f64 = segs.iter().map(|s| s.length_km).sum();
+                    
                     // Most common highway type
                     let highway_type = segs
                         .iter()
@@ -397,6 +426,7 @@ fn group_segments_into_streets(
                         num_segments: segs.len(),
                         highway_type,
                         tags: common_tags,
+                        length_km: total_length_km,
                     }
                 })
                 .collect::<Vec<_>>()
@@ -417,6 +447,7 @@ fn streets_to_dataframe(streets: Vec<Street>) -> Result<DataFrame> {
     let lons: Vec<f64> = streets.iter().map(|s| s.lon).collect();
     let num_segments: Vec<u32> = streets.iter().map(|s| s.num_segments as u32).collect();
     let highway_types: Vec<String> = streets.iter().map(|s| s.highway_type.clone()).collect();
+    let lengths_km: Vec<f64> = streets.iter().map(|s| s.length_km).collect();
     
     let df = DataFrame::new(vec![
         Series::new("street_name", street_names),
@@ -425,6 +456,7 @@ fn streets_to_dataframe(streets: Vec<Street>) -> Result<DataFrame> {
         Series::new("lon", lons),
         Series::new("num_segments", num_segments),
         Series::new("highway_type", highway_types),
+        Series::new("length_km", lengths_km),
     ])?;
     
     Ok(df)
@@ -506,9 +538,10 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     
     if args.len() < 2 {
-        eprintln!("Usage: {} <state_name> [pbf_file] [distance_threshold_km]", args[0]);
+        eprintln!("Usage: {} <state_name> [pbf_file] [distance_threshold_km] [output_path]", args[0]);
         eprintln!("Example: {} delaware", args[0]);
         eprintln!("Example: {} california /path/to/california-latest.osm.pbf 0.1", args[0]);
+        eprintln!("Example: {} delaware data/osm/delaware-latest.osm.pbf 1.609 data/streetdfs_1mi/delaware_streets.parquet", args[0]);
         std::process::exit(1);
     }
     
@@ -531,11 +564,17 @@ fn main() -> Result<()> {
         0.2 // Default 200m
     };
     
+    let output_path = if args.len() > 4 {
+        Some(PathBuf::from(&args[4]))
+    } else {
+        None
+    };
+    
     if !pbf_path.exists() {
         anyhow::bail!("File not found: {}", pbf_path.display());
     }
     
-    process_osm_to_parquet(&pbf_path, &state_name, None, distance_threshold_km)?;
+    process_osm_to_parquet(&pbf_path, &state_name, output_path, distance_threshold_km)?;
     
     Ok(())
 }

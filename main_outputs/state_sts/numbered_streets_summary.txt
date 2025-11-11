@@ -1,0 +1,9 @@
+State-Named Streets with Numbers - Summary
+============================================================
+
+Total state-named streets: 48,635
+Streets with numbers: 1,025
+Streets without numbers: 47,610
+
+Fraction with numbers: 2.11%
+Fraction without numbers: 97.89%

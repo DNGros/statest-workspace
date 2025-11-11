@@ -12,6 +12,7 @@ class USState(Enum):
     COLORADO = "colorado"
     CONNECTICUT = "connecticut"
     DELAWARE = "delaware"
+    DISTRICT_OF_COLUMBIA = "district of columbia"
     FLORIDA = "florida"
     GEORGIA = "georgia"
     HAWAII = "hawaii"
