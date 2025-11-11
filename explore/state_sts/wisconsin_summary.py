@@ -81,24 +81,60 @@ def analyze_wisconsin_streets():
                 for name in sorted(out_matches):
                     print(f"    - {name}")
     
+    # Calculate generic vs non-generic patterns
+    def is_generic_pattern(name):
+        name_lower = name.lower()
+        generic_endings = [
+            " avenue", " ave", " street", " st", " road", " rd",
+            " drive", " dr", " lane", " ln", " way", " boulevard", " blvd",
+            " court", " ct", " circle", " cir", " parkway", " pkwy",
+            " place", " pl", " trail", " trl"
+        ]
+        for ending in generic_endings:
+            if name_lower == f"wisconsin{ending}" or name_lower == f"wisconsin {ending.lstrip()}":
+                return True
+        return False
+    
+    in_names = in_state['street_name'].to_list()
+    out_names = out_of_state['street_name'].to_list()
+    
+    in_generic = sum(1 for name in in_names if is_generic_pattern(name))
+    out_generic = sum(1 for name in out_names if is_generic_pattern(name))
+    in_non_generic = len(in_names) - in_generic
+    out_non_generic = len(out_names) - out_generic
+    
+    generic_in_state_pct = 100 * in_generic / (in_generic + out_generic) if (in_generic + out_generic) > 0 else 0
+    non_generic_in_state_pct = 100 * in_non_generic / (in_non_generic + out_non_generic) if (in_non_generic + out_non_generic) > 0 else 0
+    
     # Summary insight
     print("\n" + "="*80)
     print("KEY INSIGHT")
     print("="*80)
-    print("""
-Wisconsin ranks #1 in in-state percentage (39.1%) because it has many streets
-named after Wisconsin-specific geographic features that naturally occur only
-in Wisconsin:
+    print(f"""
+Wisconsin ranks #1 in in-state percentage (39.1%) due to a combination of factors:
 
-- Wisconsin River (5 streets in-state, 0 out-of-state)
-- Wisconsin Bay (3 streets in-state, 0 out-of-state)  
-- Wisconsin Dells (2 streets in-state, 1 out-of-state)
-- Lake Wisconsin (2 streets in-state, 0 out-of-state)
+1. Geographic feature names: Wisconsin-specific features like Wisconsin River, 
+   Wisconsin Bay, Wisconsin Dells, and Lake Wisconsin account for 10 streets that
+   are almost exclusively in Wisconsin (9 in-state, 1 out-of-state).
 
-These geographic feature names account for 12 streets that are almost exclusively
-in Wisconsin, which helps boost Wisconsin's in-state percentage compared to
-states that primarily have generic street names like "Wisconsin Avenue" or
-"Wisconsin Street" that appear in many states.
+2. Higher in-state rate for generic patterns: Generic patterns like "Wisconsin Avenue" 
+   and "Wisconsin Street" have a 34.4% in-state rate for Wisconsin, compared to 
+   states like Texas (27.5%) or California (likely lower). This suggests that 
+   generic "Wisconsin [Street]" patterns are less commonly used across the country
+   compared to other state names.
+
+3. Composition effect: Wisconsin has a higher proportion of non-generic patterns 
+   among its in-state streets (45.5%) compared to out-of-state (33.2%), and these
+   non-generic patterns have a higher in-state rate (46.8% vs 34.4% for generic).
+
+Breakdown:
+- Generic patterns: {in_generic} in-state, {out_generic} out-of-state ({generic_in_state_pct:.1f}% in-state)
+- Non-generic patterns: {in_non_generic} in-state, {out_non_generic} out-of-state ({non_generic_in_state_pct:.1f}% in-state)
+- Geographic features: 9 in-state, 1 out-of-state (90.0% in-state)
+
+The geographic features alone don't fully explain the high percentage, but they contribute
+along with Wisconsin's overall pattern of having fewer generic street names used 
+nationwide compared to other popular state names.
     """)
 
 if __name__ == "__main__":

@@ -730,15 +730,32 @@ def calculate_state_fraction_of_all_streets() -> pl.DataFrame:
         )
     )
     
-    # Merge with total_streets_df
+    # Merge with total_streets_df to include all states
+    # This ensures states with zero streets named after themselves are included
+    # First, join total_streets_df with state_mapping_df to get state_name for all states
+    # Then join with state_named_counts to get counts (left join keeps all states)
     result = (
-        state_named_counts
+        total_streets_df
         .join(
-            total_streets_df,
-            left_on="state_id",
-            right_on="state",
-            how="inner"
+            state_mapping_df,
+            left_on="state",
+            right_on="state_id",
+            how="left"
         )
+        .join(
+            state_named_counts.select(["state_id", "streets_named_after_state"]),
+            left_on="state",  # Use "state" from total_streets_df which matches "state_id"
+            right_on="state_id",
+            how="left"
+        )
+        .with_columns([
+            pl.col("streets_named_after_state").fill_null(0),  # Fill nulls with 0 for states with no matches
+            # Convert state_name_lower to title case, with fallback to deriving from state if null
+            pl.coalesce([
+                pl.col("state_name_lower").str.to_titlecase(),
+                pl.col("state").str.replace("-", " ").str.to_titlecase()
+            ]).alias("state_name")
+        ])
         .with_columns([
             (pl.col("streets_named_after_state") / pl.col("total_streets") * 100).alias("percentage")
         ])
@@ -1122,7 +1139,7 @@ def plot_in_state_percentage(
     Args:
         top_n: Number of top states to show (default: 7)
         bottom_n: Number of bottom states to show (default: 3)
-        width: Figure width in inches. If None, uses default (5.5)
+        width: Figure width in inches. If None, uses default (4.5)
         height: Figure height in inches. If None, auto-calculates based on number of items
         output_path: Optional path to save the plot. If None, saves to main_outputs/state_sts/
     """
@@ -1140,7 +1157,7 @@ def plot_in_state_percentage(
     # Determine figure size
     num_items = top_n + bottom_n
     if width is None:
-        width = 5.5
+        width = 4.5
     if height is None:
         height = calculate_figure_height(num_items, min_height=4.5, 
                                         inches_per_item=0.25, extra_space=2.0)
@@ -1191,7 +1208,7 @@ def plot_state_fraction_of_all_streets(
     Args:
         top_n: Number of top states to show (default: 7)
         bottom_n: Number of bottom states to show (default: 3)
-        width: Figure width in inches. If None, uses default (5.5)
+        width: Figure width in inches. If None, uses default (4.5)
         height: Figure height in inches. If None, auto-calculates based on number of items
         output_path: Optional path to save the plot. If None, saves to main_outputs/state_sts/
     """
@@ -1206,7 +1223,7 @@ def plot_state_fraction_of_all_streets(
     # Determine figure size
     num_items = top_n + bottom_n
     if width is None:
-        width = 5.5
+        width = 4.5
     if height is None:
         height = calculate_figure_height(num_items, min_height=4.5, 
                                         inches_per_item=0.25, extra_space=2.0)
@@ -1223,7 +1240,7 @@ def plot_state_fraction_of_all_streets(
         top_n=top_n,
         bottom_n=bottom_n,
         rank_column='rank',
-        bar_color='#d49bb5',
+        bar_color='#f280bf',
     )
     
     # Determine output path
