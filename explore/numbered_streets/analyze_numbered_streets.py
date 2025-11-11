@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from workspace.load_street_df import load_state_streets_df
 from workspace.states import USState
 
-# Import from the same directory
+# Import from state_sts directory
 from workspace.explore.state_sts.most_common_state_st import extract_state_names_from_street_name
 
 
