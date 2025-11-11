@@ -262,8 +262,8 @@ def save_plot(
         plt.savefig(
             output_path,
             format='svg',
-            bbox_inches='tight',
-            pad_inches=0.01,
+            bbox_inches=None,  # Use None to preserve full figure size (fixed width)
+            pad_inches=0.1,    # Small padding
             transparent=transparent
         )
     else:

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 # Add parent directory to path to import workspace modules
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from workspace.load_street_df import load_state_streets_df
+from workspace.load_street_df import load_state_streets_df, load_street_df
 from workspace.states import USState
 from workspace.plot_utils import (
     create_horizontal_bar_plot,
@@ -307,43 +307,29 @@ def count_state_names_by_location_all_states(
 def draw_axis_break(ax, y_break_start: float, y_break_end: float, 
                     x_pos: float = 0, break_width: float = 0.15):
     """
-    Draw visual break markers (zigzag lines) on the y-axis and add ellipsis indicator.
+    Add ellipsis indicator for axis break (zigzag removed).
     
     Args:
         ax: Matplotlib axes
         y_break_start: Y position where break starts (bottom of gap)
         y_break_end: Y position where break ends (top of gap)
         x_pos: X position for the break markers (default: 0, at left spine)
-        break_width: Width of the zigzag pattern
+        break_width: Width parameter (kept for compatibility, not used)
     """
-    # Draw zigzag pattern on left side
-    x_coords = [
-        x_pos - break_width,
-        x_pos,
-        x_pos + break_width,
-        x_pos
-    ]
-    y_coords = [
-        y_break_start,
-        y_break_start + (y_break_end - y_break_start) * 0.4,
-        y_break_start + (y_break_end - y_break_start) * 0.6,
-        y_break_end
-    ]
-    
-    # Draw the zigzag line
-    ax.plot(x_coords, y_coords, color='#cccccc', linewidth=0.5, clip_on=False, zorder=10)
-    
     # Add ellipsis text centered in the gap to indicate omitted data
+    # Position it just inside the plot area (at x=0.01 in axes coordinates) 
+    # so it doesn't extend outside and affect bbox calculations
     gap_center_y = (y_break_start + y_break_end) / 2
     ax.text(
-        x_pos - 0.5,  # Position slightly to the left of the axis
+        0.01,  # Position just inside the plot area (axes coordinates)
         gap_center_y,
         '...',
         va='center',
-        ha='right',
+        ha='left',
         fontsize=12,
         color='#999999',
-        clip_on=False,
+        clip_on=True,  # Clip to plot area
+        transform=ax.get_yaxis_transform(),  # Use y-axis transform for x=0.01, y in data coords
         zorder=10
     )
 
@@ -614,6 +600,327 @@ def calculate_figure_height(num_items: int, min_height: float = 12.0,
     return max(min_height, num_items * inches_per_item + extra_space)
 
 
+def calculate_in_state_percentage(lf: pl.LazyFrame) -> pl.DataFrame:
+    """
+    Calculate the percentage of streets with each state name that are actually in that state.
+    
+    Args:
+        lf: LazyFrame containing state-named streets with 'street_name' and 'state' columns
+        
+    Returns:
+        DataFrame with columns: 'state_name', 'in_state', 'total', 'percentage', 'rank'
+        sorted by percentage descending, with rank column (1-based)
+    """
+    print("Calculating in-state percentage for each state name...")
+    
+    # Get counts by location
+    state_counts = count_all_state_names_by_location(lf)
+    
+    # Calculate percentage
+    result = (
+        state_counts
+        .drop("rank")  # Drop old rank since we're re-ranking by percentage
+        .with_columns([
+            (pl.col("in_state") / pl.col("total") * 100).alias("percentage")
+        ])
+        .filter(pl.col("total") > 0)  # Only include states with at least one occurrence
+        .sort("percentage", descending=True)
+        .with_row_index("rank")
+        .with_columns([
+            (pl.col("rank") + 1).alias("rank")  # Convert to 1-based ranking
+        ])
+    )
+    
+    return result
+
+
+def get_total_streets_per_state() -> pl.DataFrame:
+    """
+    Get total street counts per state from all streets data.
+    
+    Returns:
+        DataFrame with columns: 'state' and 'total_streets'
+    """
+    print("Loading all streets to get total counts per state...")
+    
+    # Load all streets (not just state-named)
+    lf = load_street_df()
+    
+    # Count streets per state
+    total_counts = (
+        lf
+        .group_by("state")
+        .agg(pl.len().alias("total_streets"))
+        .collect()
+    )
+    
+    return total_counts
+
+
+def calculate_state_fraction_of_all_streets() -> pl.DataFrame:
+    """
+    Calculate what fraction of all streets in each state are named after that state.
+    
+    Returns:
+        DataFrame with columns: 'state_name', 'streets_named_after_state', 'total_streets', 
+        'percentage', 'rank' sorted by percentage descending, with rank column (1-based)
+    """
+    print("Calculating fraction of all streets named after each state...")
+    
+    # Get total streets per state
+    total_streets_df = get_total_streets_per_state()
+    
+    # Load state-named streets
+    state_streets_lf = load_state_streets_df()
+    
+    # Count how many streets named after each state are in that state
+    # Collect for string processing
+    df = state_streets_lf.collect()
+    
+    records = []
+    for row in df.iter_rows(named=True):
+        street_name = row['street_name']
+        # Normalize physical state: convert dashes to spaces and lowercase
+        physical_state = row['state'].lower().replace("-", " ")
+        
+        found_states = extract_state_names_from_street_name(street_name)
+        
+        # For each state name found in the street name, check if it's in-state
+        for state_name_in_street in found_states:
+            is_in_state = (state_name_in_street.lower() == physical_state)
+            
+            if is_in_state:
+                records.append({
+                    'state_name': state_name_in_street,
+                    'physical_state': physical_state
+                })
+    
+    # Count streets named after each state that are in that state
+    state_named_counts = (
+        pl.DataFrame(records)
+        .group_by("state_name")
+        .agg(pl.len().alias("streets_named_after_state"))
+    )
+    
+    # Merge with total street counts
+    # Need to match state names to state identifiers in total_streets_df
+    # total_streets_df has 'state' column with values like "new-york", "california"
+    # state_named_counts has 'state_name' with values like "new york", "california"
+    
+    # Create a mapping DataFrame from state name to state identifier
+    state_mapping_records = []
+    for state_name in USState.all_names():
+        state_id = state_name.lower().replace(" ", "-")
+        state_mapping_records.append({
+            'state_name_lower': state_name.lower(),
+            'state_id': state_id
+        })
+    state_mapping_df = pl.DataFrame(state_mapping_records)
+    
+    # Add state identifier column to state_named_counts by joining with mapping
+    state_named_counts = (
+        state_named_counts
+        .with_columns([
+            pl.col("state_name").str.to_lowercase().alias("state_name_lower")
+        ])
+        .join(
+            state_mapping_df,
+            on="state_name_lower",
+            how="left"
+        )
+    )
+    
+    # Merge with total_streets_df
+    result = (
+        state_named_counts
+        .join(
+            total_streets_df,
+            left_on="state_id",
+            right_on="state",
+            how="inner"
+        )
+        .with_columns([
+            (pl.col("streets_named_after_state") / pl.col("total_streets") * 100).alias("percentage")
+        ])
+        .select([
+            "state_name",
+            "streets_named_after_state",
+            "total_streets",
+            "percentage"
+        ])
+        .sort("percentage", descending=True)
+        .with_row_index("rank")
+        .with_columns([
+            (pl.col("rank") + 1).alias("rank")  # Convert to 1-based ranking
+        ])
+    )
+    
+    return result
+
+
+def create_percentage_bar_plot(
+    data_df: pl.DataFrame,
+    value_column: str,
+    label_column: str,
+    numerator_column: str,
+    denominator_column: str,
+    figsize: tuple[float, float] = (4.5, 4.5),
+    xlabel: str = 'Percentage (%)',
+    ylabel: str = '',
+    top_n: int = 7,
+    bottom_n: int = 3,
+    rank_column: str = None,
+    break_gap: float = 1.0,
+    bar_height: float = 0.7,
+    bar_color: str = '#5A9B8E',
+    xlim_max: Optional[float] = None
+) -> tuple[plt.Figure, plt.Axes]:
+    """
+    Create a horizontal bar plot showing percentages with break mode (top N + bottom N).
+    
+    Args:
+        data_df: Polars DataFrame with data to plot (must be sorted by value_column descending)
+        value_column: Column name for bar values (percentage)
+        label_column: Column name for bar labels (y-axis)
+        numerator_column: Column name for numerator in annotation (X in "X / Y (Z%)")
+        denominator_column: Column name for denominator in annotation (Y in "X / Y (Z%)")
+        figsize: Figure size as (width, height) in inches
+        xlabel: Label for x-axis
+        ylabel: Label for y-axis
+        top_n: Number of top items to show
+        bottom_n: Number of bottom items to show
+        rank_column: Column name for rank numbers
+        break_gap: Gap size in axis units between top and bottom sections
+        bar_height: Height of each bar (default: 0.7)
+        bar_color: Color for bars (default: muted blue-teal)
+        xlim_max: Optional maximum x-axis limit. If None, uses max_value * 1.15
+        
+    Returns:
+        Tuple of (figure, axes) for further customization
+    """
+    # Set up style
+    setup_tufte_style()
+    
+    # Select top N and bottom N
+    top_items = data_df.head(top_n)
+    bottom_items = data_df.tail(bottom_n)
+    plot_data = pl.concat([top_items, bottom_items])
+    
+    # Convert to list for easier indexing
+    data_list = plot_data.to_dicts()
+    
+    # Extract data
+    labels = [item[label_column] for item in data_list]
+    values = [item[value_column] for item in data_list]
+    numerators = [item[numerator_column] for item in data_list]
+    denominators = [item[denominator_column] for item in data_list]
+    
+    if rank_column:
+        ranks = [item[rank_column] for item in data_list]
+        display_labels = [f"{rank}. {label}" for rank, label in zip(ranks, labels)]
+    else:
+        display_labels = labels
+    
+    # Create non-contiguous y-positions
+    top_positions = list(range(top_n))
+    bottom_start = int(top_n + break_gap)
+    bottom_positions = list(range(bottom_start, bottom_start + bottom_n))
+    y_positions = top_positions + bottom_positions
+    
+    # Create figure with transparent background for SVG
+    fig, ax = plt.subplots(figsize=figsize, facecolor='none')
+    fig.patch.set_facecolor('none')
+    ax.set_facecolor('none')
+    
+    # Create horizontal bar plot
+    bars = ax.barh(
+        y_positions,
+        values,
+        height=bar_height,
+        color=bar_color,
+        edgecolor='none',
+        linewidth=0
+    )
+    
+    # Set y-axis labels
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(display_labels)
+    
+    # Draw axis break markers
+    break_y_start = top_n - 0.5
+    break_y_end = bottom_start - 0.5
+    draw_axis_break(ax, break_y_start, break_y_end, x_pos=0, break_width=0.3)
+    
+    # Clean axis styling - minimal chartjunk
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_color('#cccccc')
+    ax.spines['bottom'].set_linewidth(0.5)
+    
+    # Hide the left spine (we'll draw it manually)
+    ax.spines['left'].set_visible(False)
+    
+    # Set y-axis limits and invert so highest values (rank 1) appear at top
+    ax.set_ylim(bottom=-0.5, top=bottom_start + bottom_n - 0.5)
+    ax.invert_yaxis()
+    
+    # Draw left spine in two parts (above and below break)
+    ylim = ax.get_ylim()
+    # Top part of spine (above break) - from break to top of chart
+    ax.plot([0, 0], [break_y_end, ylim[0]], color='#cccccc', linewidth=0.5, 
+            transform=ax.get_yaxis_transform(), clip_on=False)
+    # Bottom part of spine (below break) - from bottom of chart to break
+    ax.plot([0, 0], [ylim[1], break_y_start], color='#cccccc', linewidth=0.5, 
+            transform=ax.get_yaxis_transform(), clip_on=False)
+    
+    # Very subtle grid only on x-axis
+    ax.grid(True, axis='x', linestyle='-', linewidth=0.5, alpha=0.2, color='#cccccc')
+    ax.set_axisbelow(True)
+    
+    # Labels
+    ax.set_xlabel(xlabel, labelpad=8)
+    ax.set_ylabel(ylabel)
+    
+    # Add annotations: "X / Y (Z%)"
+    max_value = max(values) if values else 0
+    
+    for i, (y_pos, value, num, denom) in enumerate(zip(y_positions, values, numerators, denominators)):
+        # Format annotation
+        annotation = f"{int(num):,} / {int(denom):,} ({value:.1f}%)"
+        
+        # Position annotation at end of bar with padding
+        label_offset = max_value * 0.02 if max_value > 0 else value * 0.1
+        ax.text(
+            value + label_offset,
+            y_pos,
+            annotation,
+            va='center',
+            ha='left',
+            fontsize=10,
+            color='#111111'
+        )
+    
+    # Set x-axis limits with padding for labels
+    if max_value > 0:
+        if xlim_max is not None:
+            # Use specified maximum, but ensure it's at least as large as max_value
+            xlim_right = max(xlim_max, max_value * 1.15)
+        else:
+            xlim_right = max_value * 1.15
+        ax.set_xlim(left=0, right=xlim_right)
+    else:
+        ax.set_xlim(left=0)
+    
+    # Clean up ticks
+    ax.tick_params(axis='x', length=4, width=0.5, colors='#333333')
+    ax.tick_params(axis='y', length=0, width=0, colors='#333333', pad=8)
+    
+    # Use tight_layout to prevent cutoff while maintaining figure size
+    plt.tight_layout(pad=1.5)
+    
+    return fig, ax
+
+
 def plot_state_names(
     stacked: bool = False,
     top_n: int = 10,
@@ -802,6 +1109,141 @@ def plot_state_names(
             return plot_data
 
 
+def plot_in_state_percentage(
+    top_n: int = 7,
+    bottom_n: int = 3,
+    width: Optional[float] = None,
+    height: Optional[float] = None,
+    output_path: Optional[Path] = None
+):
+    """
+    Plot top N and bottom N states ranked by % of streets with that state name that are in-state.
+    
+    Args:
+        top_n: Number of top states to show (default: 7)
+        bottom_n: Number of bottom states to show (default: 3)
+        width: Figure width in inches. If None, uses default (5.5)
+        height: Figure height in inches. If None, auto-calculates based on number of items
+        output_path: Optional path to save the plot. If None, saves to main_outputs/state_sts/
+    """
+    print("Loading state-named streets from all states...")
+    lf = load_state_streets_df()
+    
+    # Calculate percentages
+    percentage_df = calculate_in_state_percentage(lf)
+    
+    # Capitalize state names for display (title case)
+    percentage_df = percentage_df.with_columns(
+        pl.col("state_name").str.to_titlecase().alias("state_name")
+    )
+    
+    # Determine figure size
+    num_items = top_n + bottom_n
+    if width is None:
+        width = 5.5
+    if height is None:
+        height = calculate_figure_height(num_items, min_height=4.5, 
+                                        inches_per_item=0.25, extra_space=2.0)
+    
+    # Create and save plot
+    fig, ax = create_percentage_bar_plot(
+        percentage_df,
+        value_column='percentage',
+        label_column='state_name',
+        numerator_column='in_state',
+        denominator_column='total',
+        figsize=(width, height),
+        xlabel='Percentage In-State (%)',
+        top_n=top_n,
+        bottom_n=bottom_n,
+        rank_column='rank',
+        bar_color='#E3B778'  # Warm yellow-gold - matches in-state color from stacked plot
+    )
+    
+    # Determine output path
+    if output_path is None:
+        output_path = get_output_path_from_script(
+            Path(__file__), 
+            "in_state_percentage_break.svg"
+        )
+    
+    save_plot(fig, output_path)
+    
+    # Print the results
+    print(f"\nTop {top_n} states by in-state percentage:")
+    print(percentage_df.head(top_n))
+    print(f"\nBottom {bottom_n} states by in-state percentage:")
+    print(percentage_df.tail(bottom_n))
+    
+    return percentage_df
+
+
+def plot_state_fraction_of_all_streets(
+    top_n: int = 7,
+    bottom_n: int = 3,
+    width: Optional[float] = None,
+    height: Optional[float] = None,
+    output_path: Optional[Path] = None
+):
+    """
+    Plot top N and bottom N states ranked by fraction of all streets named after that state.
+    
+    Args:
+        top_n: Number of top states to show (default: 7)
+        bottom_n: Number of bottom states to show (default: 3)
+        width: Figure width in inches. If None, uses default (5.5)
+        height: Figure height in inches. If None, auto-calculates based on number of items
+        output_path: Optional path to save the plot. If None, saves to main_outputs/state_sts/
+    """
+    # Calculate fractions
+    fraction_df = calculate_state_fraction_of_all_streets()
+    
+    # Capitalize state names for display (title case)
+    fraction_df = fraction_df.with_columns(
+        pl.col("state_name").str.to_titlecase().alias("state_name")
+    )
+    
+    # Determine figure size
+    num_items = top_n + bottom_n
+    if width is None:
+        width = 5.5
+    if height is None:
+        height = calculate_figure_height(num_items, min_height=4.5, 
+                                        inches_per_item=0.25, extra_space=2.0)
+    
+    # Create and save plot
+    fig, ax = create_percentage_bar_plot(
+        fraction_df,
+        value_column='percentage',
+        label_column='state_name',
+        numerator_column='streets_named_after_state',
+        denominator_column='total_streets',
+        figsize=(width, height),
+        xlabel='Percent of All Streets Any Name',
+        top_n=top_n,
+        bottom_n=bottom_n,
+        rank_column='rank',
+        bar_color='#d49bb5',
+    )
+    
+    # Determine output path
+    if output_path is None:
+        output_path = get_output_path_from_script(
+            Path(__file__), 
+            "state_fraction_of_all_streets_break.svg"
+        )
+    
+    save_plot(fig, output_path)
+    
+    # Print the results
+    print(f"\nTop {top_n} states by fraction of all streets named after state:")
+    print(fraction_df.head(top_n))
+    print(f"\nBottom {bottom_n} states by fraction of all streets named after state:")
+    print(fraction_df.tail(bottom_n))
+    
+    return fraction_df
+
+
 def main():
     """Main entry point."""
     import argparse
@@ -813,6 +1255,16 @@ def main():
         '--stacked',
         action='store_true',
         help='Show stacked bars (in-state vs out-of-state) instead of simple bars'
+    )
+    parser.add_argument(
+        '--in-state-percentage',
+        action='store_true',
+        help='Plot in-state percentage (top 7 and bottom 3)'
+    )
+    parser.add_argument(
+        '--state-fraction',
+        action='store_true',
+        help='Plot fraction of all streets named after state (top 7 and bottom 3)'
     )
     parser.add_argument(
         '--top-n',
@@ -847,14 +1299,33 @@ def main():
     
     args = parser.parse_args()
     
-    plot_state_names(
-        stacked=args.stacked,
-        top_n=args.top_n,
-        bottom_n=args.bottom_n,
-        width=args.width,
-        height=args.height,
-        output_path=args.output
-    )
+    # Determine which plot to generate
+    if args.in_state_percentage:
+        plot_in_state_percentage(
+            top_n=args.top_n if args.top_n != 10 else 7,
+            bottom_n=args.bottom_n if args.bottom_n != 0 else 3,
+            width=args.width,
+            height=args.height,
+            output_path=args.output
+        )
+    elif args.state_fraction:
+        plot_state_fraction_of_all_streets(
+            top_n=args.top_n if args.top_n != 10 else 7,
+            bottom_n=args.bottom_n if args.bottom_n != 0 else 3,
+            width=args.width,
+            height=args.height,
+            output_path=args.output
+        )
+    else:
+        # Default: original plot_state_names behavior
+        plot_state_names(
+            stacked=args.stacked,
+            top_n=args.top_n,
+            bottom_n=args.bottom_n,
+            width=args.width,
+            height=args.height,
+            output_path=args.output
+        )
 
 
 if __name__ == "__main__":
