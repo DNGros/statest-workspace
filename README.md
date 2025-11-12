@@ -1,4 +1,4 @@
-![Pineapple](imgs/pineapple.webp)
+<img src="imgs/pineapple.webp" alt="Pineapple" width="200">
 
 This workspace contains the code for:
 
