@@ -24,6 +24,7 @@ from workspace.explore.state_sts.most_common_state_st import (
 )
 from workspace.explore.state_sts.self_vs_other_named import calculate_self_vs_other_named
 from workspace.plot_utils import get_output_path_from_script
+from workspace.cache_utils import FileCache
 
 
 def escape_html(text):
@@ -74,17 +75,13 @@ def generate_html_table(rows, table_class=""):
     return '\n'.join(html)
 
 
-def generate_combined_metrics_table(output_path: Optional[Path] = None) -> pl.DataFrame:
+def _compute_combined_metrics() -> pl.DataFrame:
     """
-    Generate a combined table with all three metrics and their average.
+    Internal function to compute combined metrics (cacheable).
     
-    Args:
-        output_path: Optional path to save HTML table. If None, saves to main_outputs/state_sts/
-        
     Returns:
-        DataFrame with combined metrics, sorted by average rank (ascending, lower = more egotistical)
+        DataFrame with combined metrics, sorted by average rank
     """
-    print("Loading state-named streets...")
     lf = load_state_streets_df()
     
     print("Calculating in-state percentage...")
@@ -154,7 +151,7 @@ def generate_combined_metrics_table(output_path: Optional[Path] = None) -> pl.Da
     )
     
     # Select final columns in display order
-    result = combined.select([
+    return combined.select([
         "state_name",
         "in_state_pct",
         "state_fraction_pct",
@@ -164,6 +161,41 @@ def generate_combined_metrics_table(output_path: Optional[Path] = None) -> pl.Da
         "rank_self_named",
         "avg_rank"
     ])
+
+
+def generate_combined_metrics_table(
+    output_path: Optional[Path] = None,
+    use_cache: bool = True
+) -> pl.DataFrame:
+    """
+    Generate a combined table with all three metrics and their average.
+    
+    Args:
+        output_path: Optional path to save HTML table. If None, saves to main_outputs/state_sts/
+        use_cache: If True, use cached results if available (default: True)
+        
+    Returns:
+        DataFrame with combined metrics, sorted by average rank (ascending, lower = more egotistical)
+    """
+    # Set up cache
+    cache_dir = Path(__file__).parent.parent.parent / "data" / "cache"
+    cache = FileCache(cache_dir)
+    
+    # Get data directory to track dependencies
+    data_dir = Path(__file__).parent.parent.parent / "data"
+    dependencies = list(data_dir.glob("*.parquet"))
+    
+    # Get or compute the combined metrics
+    if use_cache:
+        result = cache.get_or_compute(
+            key="combined_metrics",
+            params={},  # No parameters affect this computation
+            dependencies=dependencies,
+            compute_fn=_compute_combined_metrics
+        )
+    else:
+        print("Cache disabled, computing combined metrics...")
+        result = _compute_combined_metrics()
     
     # Generate HTML table with ranks and base values in parentheses
     rows = []
@@ -213,10 +245,18 @@ def main():
         default=None,
         help='Output path for HTML table (default: saves to main_outputs/state_sts/)'
     )
+    parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Disable caching and recompute from scratch'
+    )
     
     args = parser.parse_args()
     
-    generate_combined_metrics_table(output_path=args.output)
+    generate_combined_metrics_table(
+        output_path=args.output,
+        use_cache=not args.no_cache
+    )
 
 
 if __name__ == "__main__":

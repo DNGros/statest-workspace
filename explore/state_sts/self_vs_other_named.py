@@ -314,7 +314,7 @@ def create_grouped_horizontal_bar_plot(
             if total_val > 0:
                 self_pct = (self_val / total_val) * 100
                 # Position after the rightmost bar (other-named) with more spacing
-                x_position = other_val + max_value * 0.05
+                x_position = other_val + max_value * 0.10
                 ax.text(
                     x_position,
                     y_positions[i],
@@ -328,7 +328,7 @@ def create_grouped_horizontal_bar_plot(
         
         # Extra space for labels and percentage annotations
         if max_value > 0:
-            ax.set_xlim(left=0, right=max_value * 1.20)
+            ax.set_xlim(left=0, right=max_value * 1.30)
     else:
         ax.set_xlim(left=0)
     
