@@ -67,10 +67,10 @@ def create_state_streets_map(
     
     # Create hover text
     df = df.with_columns([
-        (pl.col("street_name") + "<br>Location: " + 
-         pl.col("state").str.to_titlecase() + "<br>Named after: " + 
-         pl.col("found_state") + "<br>Type: " + 
-         pl.col("highway_type")).alias("hover_text")
+        (pl.col("street_name") + "<br>" + 
+         pl.col("state").str.to_titlecase() + "<br>" + 
+         pl.col("highway_type").str.to_titlecase() + " • " +
+         pl.col("length_km").round(2).cast(pl.Utf8) + " km").alias("hover_text")
     ])
     
     print("Creating Plotly map...")
